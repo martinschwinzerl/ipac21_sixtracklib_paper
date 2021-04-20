@@ -1,0 +1,244 @@
+% !TeX spellcheck = en_GB
+% !TeX program = lualatex
+\documentclass[a4paper,
+               %boxit,        % check whether paper is inside correct margins
+               %titlepage,    % separate title page
+               refpage,       % separate references
+               %biblatex,     % biblatex is used
+               keeplastbox,   % flushend option: not to un-indent last line in References
+               %nospread,     % flushend option: do not fill with whitespace to balance columns
+               %hyphens,      % allow \url to hyphenate at "-" (hyphens)
+               %xetex,        % use XeLaTeX to process the file
+               %luatex,       % use LuaLaTeX to process the file
+               ]{jacow}
+\usepackage{pdfpages,multirow,ragged2e} %
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\makeatletter%
+	\ifboolexpr{bool{xetex}}
+	 {\renewcommand{\Gin@extensions}{.pdf,%
+	                    .png,.jpg,.bmp,.pict,.tif,.psd,.mac,.sga,.tga,.gif,%
+	                    .eps,.ps,%
+	                    }}{}
+\makeatother
+
+\ifboolexpr{bool{xetex} or bool{luatex}} % test for XeTeX/LuaTeX
+ {}                                      % input encoding is utf8 by default
+ {\usepackage[utf8]{inputenc}}           % switch to utf8
+
+\usepackage[USenglish]{babel}
+
+\ifboolexpr{bool{jacowbiblatex}}%
+ {%
+  \addbibresource{jacow-test.bib}
+  \addbibresource{biblatex-examples.bib}
+ }{}
+\listfiles
+
+\begin{document}
+
+\title{Optimising and Extending A Single-Particle Tracking Library For High Parallel Performance}
+
+\author{M. Schwinzerl\thanks{martin.schwinzerl@cern.ch}\textsuperscript{1}, R. De Maria, K. Paraschou, H. Bartosik, G. Iadarola, CERN, Geneva, Switzerland\\
+		A. Oeftiger, GSI, Darmstadt, Germany\\
+		\textsuperscript{1}Institute of Mathematics and Scientific Computing, University of Graz, Austria}
+	
+\maketitle
+
+%
+\begin{abstract}
+   SixTrackLib is a library for performing tracking simulations on highly parallel systems such as shared memory multi-core processors or graphical processing units (GPUs). Its single-particle approach fits very well to parallel implementations with reasonable base-line performance, making such a library an interesting building block for various use cases, including simulations covering collective effects. We describe the optimisations applied to SixTrackLib to improve its performance on its main target platforms and the associated performance gain. Furthermore we outline the technical interfaces and extensions implemented to allow its use in a wider range of applications and studies.
+\end{abstract}
+
+\section{Introduction}
+SixTrackLib\cite{sixtracklib-repo-2021} is a clean-room re-implementation of the tracking component of the SixTrack\cite{demaria2019}\cite{sixtrack-repo-2021} simulation program in the form of a stand-alone library. It is suitable for stand-alone use in simulations or as a building-block in feature-rich tools and libraries. SixTrackLib is a \textit{single-particle} tracking code, the idealised constituent particles of a beam only interacting with their environment via electro-magnetic fields but not directly with other particles. Particles are described in a $6D$ (i.e. $4D$ transversal and $2D$ longitudinal) phase space in relation to the trajectory of a \textit{reference particle} (cf. Fig.~\ref{fig:coordinates}).
+% ------------------------------------------------------------
+\begin{figure}[!htb]
+   \centering
+   \includegraphics*[width=.8\columnwidth]{fig_coordinates}
+   \caption{$6D$ particle coordinate system for a circular accelerator with bending radius $\rho$.}
+   \label{fig:coordinates}
+\end{figure}
+% ------------------------------------------------------------
+The accelerator through which particles travel is represented by a \textit{lattice}, i.e. a sequence of idealised and discrete \textit{beam elements}. They represent the electro-magnetic field configurations encountered along the particle's path as a function of their spatial position in the accelerator. Solving a particle's equations of motions turns therefore into a problem of integrating the beam element's influence along its path. Additionally, beam elements can check whether a particle deviates outside of admissible bounds and mark such particles as \textit{lost}. 
+
+
+\section{Implementation}
+\subsection{Tracking Algorithm, Parallelisation Strategy}
+Consider a lattice with $N_{elem}$ beam elements i.e., $E_i \equiv \left(\mathbf{E}\right)\left[i\right]$ and a particle $p$ with initial conditions $p\left(0\right)$. Rather than performing the numerical integration explicitly, SixTrackLib uses \textit{symplectic maps} to sequentially update the state of $p$ consistent with the piece-wise solutions to the \textit{Hamiltonian equations} for each $E_i$:
+\begin{equation}
+    \label{equ:impl_tracking_with_maps}
+    p\left(i\right) \leftarrow E_i\left( p\left( i - 1 \right) \right) \quad i \in \left[0, N_{elem}\right)
+\end{equation}
+Applying (\ref{equ:impl_tracking_with_maps}) for all $i$ and repeating the operation until $p$ has traversed until turn $N$ in a circular accelerator is an inherently sequential operation with only very few opportunities for parallelisation\footnote{Typically in the form of OpenMP-style loop parallelisation or \textit{single-instruction, multiple-data} (SIMD) vectorisation, applicable only to specific classes of maps}. While performing the simulation for a single $p$ is useful, most real-world scenarios require to simulate an \textit{ensemble} of $N_{part}$ particles i.e., $p_j \equiv \left(\mathbf{P}\right)\left[j\right]\;,\;j\in\left[0,N_{part}\right)$.
+% -------------------------------------------------
+\begin{algorithm}[!hbt]
+\begin{algorithmic}[1]
+\Procedure{track\_until}{$\left(\mathbf{P}\right)$, $\left(\mathbf{E}\right)$, $N$}
+\For{$j \gets 0$ to $N_{part} - 1$}\label{alg1:line:loop_particles}
+    \State{ $p_j \equiv \left(\textbf{P}\right)\left[j\right]$}\label{alg1:line:ref_p}
+    \While{ $\left(
+    \begin{array}{l} 
+        \mathbf{not} \; \texttt{is\_lost}(p_j) \; \mathbf{and} \\
+                        \texttt{get\_at\_turn}(p_j) < N\\
+    \end{array}
+    \right)$}\label{alg1:line:loop_turns} 
+        \For{$i \gets 0$ to $N_{elem} - 1$}\label{alg1:line:loop_lattice}
+            \State{$E_i \equiv \left(\mathbf{E}\right)\left[i\right]$}\label{alg1:line:ref_elem}
+            \State{$p_j \gets E_i\left( p_j\right )$}\label{alg1:line:apply_map}
+            \If{$\texttt{is\_lost}(p_j)$}\label{alg1:line:is_lost_check}
+                \State{ $\mathbf{break}$ }
+            \EndIf
+        \EndFor
+        \If{$\mathbf{not} \; \texttt{is\_lost}(p_j)$}\label{alg1:line:is_lost_check2}
+            \State $\texttt{increment\_at\_turn}(p_j)$\label{alg1:line:inc_turn}
+        \EndIf
+    \EndWhile
+\EndFor
+\EndProcedure
+\end{algorithmic}
+\caption{Track all active particles in $\left(\mathbf{P}\right)$ over a lattice $\left(\mathbf{E}\right)$ until all particles are in turn $N$ or they are lost.}
+\label{alg:track_until_turn}
+\end{algorithm}
+% -------------------------------------------------
+Note that particles need at least some additional state to keep track of the current turn and whether the particle has been lost. For $N_{part} \gg 1$, the loop over all particles (line~\ref{alg1:line:loop_particles} in Alg.~\ref{alg:track_until_turn}) allows, due to the single-particle approach, a very efficient parallelisation. 
+
+\subsection{Baseline Parallel Implementation}
+Typical use-cases for Alg.~\ref{alg:track_until_turn} have $N_{part} \sim 10^0$ to $10^7$ particles, $N_{elem} \sim 10^1$ to $10^5$ elements in a lattice, and $N \sim 10^0$ to $>10^7$ turns. Given this wide range of scale, SixTrackLib supports sequential and multiple parallel computational back-ends (single-threaded and vectorised code for CPUs, and both OpenCL~\cite{stone-opencl-2010} 1.2 and CUDA~\cite{nickolls-cuda-2008}, respectively). Source code for implementing the physics is shared between all three back-ends. A common implementation in particular for OpenCL and CUDA is possible because both
+abstract the target hardware in a similar way (i.e., ``threads'' organised on hierarchical grid, ``teams'' of threads operate in lockstep, segmented memory, etc.), and both support a similarly structured C99-like kernel language, allowing abstractions via C pre-processor macros.
+
+In addition to the principal six degrees of freedom and the state variables to enable the ``logistical'' particle loss operations in Alg.~\ref{alg:track_until_turn}, SixTrackLib uses $11$ additional double-precision floating point and $2$ additional integer attributes for each particle to cache frequently required auxiliary results and carry information about the reference particle. Ensembles of particles $\left(\mathbf{P}\right)$ are stored in \textit{struct-of-array} arrangement. Storing a  complete set of of attributes for each $p_j$ in this fashion increases the memory footprint but provides a more flexible data model, eases SIMD-style vectorisation across particles, and results in neighbouring GPU threads accessing neighbouring sections of device memory (\textit{coalesced} access, cf. sub-figure a) in Fig.~\ref{fig:cobjects}). Caching intermediate results is also beneficial for numerical reproducibility reasons.
+%--------------------------------------
+\begin{figure}[!hbt]
+    \centering
+    \includegraphics*[width=.95\columnwidth]{fig_cobjects}
+    \caption{a) Struct-of-arrays storage model for sets of particles. b) Schematic principle for storing structured objects with member pointers in a cobjects buffer.}
+    \label{fig:cobjects}
+\end{figure}
+%--------------------------------------
+Preparing a structure with pointer data-members on the host-side and transferring it to device memory on a GPU is non-trivial as the member pointers remain pointing to their original location. In order to remain consistent, all such pointers have to be ``remapped'' after any copy operation (cf. sub-figure b) of Fig.~\ref{fig:cobjects}). To this end, SixTrackLib uses cobjects\cite{cobjects-repo-2021}, a self-developed container library for exchanging data between host and GPU devices. The buffers provided by cobjects allow $\mathcal{O}(1)$  lookup of objects stored in a buffer and zero-copy, zero-overhead reading and writing on existing elements at the cost of increased complexity and reduced flexibility during the creation / initial storage of elements in such a buffer. For the base-line implementation, both particles and beam elements are stored in buffers residing in GPU \textit{global memory}.
+
+\subsection{Feature Extensions \& Interfaces}
+Using a storage library like cobjects (keeping structures with embedded pointers consistent across memory transfers) does not preclude direct manipulation of pointers on the device side. SixTrackLib provides tools to manipulate pointers on the device side so that sharing slices of data across several beam elements is feasible. An example is the calculation of symplectic kicks from electron cloud contributions via tri-cubic interpolation of a potential~\cite{kparaschou-2020}, which requires data-tables with approx. $10^8$ to $10^9$ Bytes each. 
+% ---------------------------------------------------------------------
+\begin{figure}[!hbt]
+    \centering
+    \includegraphics*[width=.9\columnwidth]{fig_be_external_data}
+    \caption{Sharing a slice of data across multiple elements in a cobjects buffer.}
+    \label{fig:be_external_data}
+\end{figure}
+% ---------------------------------------------------------------------
+Replicating these tables at each position in the lattice where they would be required would not be possible due to sheer amount of global memory required. However, by allowing tables to be shared across all elements using the same data (cf. Fig.~\ref{fig:be_external_data}), intensive simulations of this type have successfully been performed using SixTrackLib.
+Similarly, SixTrackLib implements a \textit{frozen space charge} model which i.a.\ features an interpolated line-charge density profile, allowing the discretised line-profile data to be shared among the beam elements~\cite{aoeftiger-2021}. It uses the same interfaces as the previous tri-cubic interpolation example but the main aim here is to simplify updates to the charge-density profile over the course of the simulation.
+
+Finally, by implementing tracking modes that traverse only a subset of a turn in addition to Alg.~\ref{alg:track_until_turn} and exposing the particle data stored in device memory, SixTrackLib allows a seamless integration and hand-off of tracking duties with other algorithms and libraries. 
+% ---------------------------------------------------------------------
+%\begin{figure}[!hbt]
+%    \centering
+%    \includegraphics*[width=0.8\columnwidth]{fig_pyheadtail_sixtracklib_integration}
+%    \caption{Integration between PyHEADTAIL and SixTrackLib by sharing particle data and handing back and forth tracking duties between the two libraries at designated points in the lattice.}
+%    \label{fig:pyheadtail_sixtracklib_integration}
+%\end{figure}
+% ---------------------------------------------------------------------
+An usage example of this is the possible tight integration between PyHEADTAIL~\cite{pyheadtail-repo-2021} and SixTrackLib. Here, SixTrackLib handles the tracking of sections that are suitable for efficient single-particle tracking code and hands-off to PyHEADTAIL for sections of the machine representing collective effects.
+
+These extensions and additional interfaces increase the versatility and usefulness of SixTrackLib, but also put additional constraints on some strategies to improve the numerical performance.  
+
+
+\section{Performance Analysis \& Optimisation}
+\subsection{Baseline Performance}
+\begin{figure*}[h!t]
+    \centering
+    \includegraphics*[width=0.9\textwidth]{fig_performance_baseline}
+    \caption{Normalised tracking time (i.e., tracking duration per particle and turn, lower numbers are better) as a function of $N_{part}$ on a selection of hardware targets. The lattice describes CERNs LHC with imperfections but without beam-beam interaction. $(P_0\cdot c) = 6.5$ TeV, starting conditions have been chosen such that no particles are lost.}
+    \label{fig:baseline_performance}
+\end{figure*}
+The implementation described in the previous section corresponds to version $0.5$ of SixTrackLib~\cite{sixtracklib-repo-2021}. Using a representative lattice (CERNs LHC with imperfections but without beam-beam or space charge effects). Fig.~\ref{fig:baseline_performance} shows the normalised elapsed wall-time $t_{wall}/(N_{part}\cdot N)$ as a function of $N_{part}$,  for a representative set of target systems. 
+
+With increasing $N_{part}$, parallelisation overheads and latencies should eventually be amortised, resulting in constant normalised elapsed wall-time. All presented systems show this this expected behaviour. Even with grid dimensions adapted to preferable warp/wave-front sizes, run-time performance can vary considerably for similar $N_{part}$. Therefore, median normalised elapsed wall-time over the range most interesting for GPUs i.e., $N_{part}: 10^4$ to $10^6$ (cf. detail in right half of Fig.~\ref{fig:baseline_performance}) is used to calculate the speed-ups. For the presented (quite representative) scenario, even lower-end consumer GPUs with poor double precision performance ratios (i.e., 1:32 for the GTX1050 Ti) yield median speedups of $>\mathcal{O}(10)$ compared to sequential tracking on the fastest tested CPU. Using more powerful GPUs with a 1:2 double precision performance ratio, speedups of $\geq \mathcal{O}(100)$ are easily reachable. Using multi-threaded, shared-memory OpenCL parallelisation on CPUs typically yields performance in between consumer- and HPC-grade GPUs. For these systems, typically optimal scaling (i.e. constant time per particle and turn) sets in at lower $N_{part} \sim 10^1$ to $10^3$, depending on the parallel run-time and CPU).
+\subsection{Optimisation Strategy}
+In order to improve the run-time performance, the following optimisation options have been implemented compared to %the straight-forward implementation of 
+Alg.~\ref{alg:track_until_turn}:
+a) create a private copy of $p_j$ for each thread (i.e., change line line~\ref{alg1:line:ref_p}) and write back after finishing tracking, b) eliminate the nested loop over all elements (cf. line~\ref{alg1:line:loop_lattice}) by introducing a special lattice terminating beam element which handles the roll-over into the next turn, thus simplifying the logic and aiding the compilers in optimisation, and c) reduce the number of thread-local variables to reduce register pressure and avoid \textit{spilling}.
+\subsection{Selected Results}
+Applying optimisations a) to c) to the same configuration, numerical experiments conducted at CERN and GSI reveal performance gains across all studied GPU systems.
+\begin{figure}[h!bt]
+    \centering 
+    \includegraphics*[width=\columnwidth]{fig_performance_optimisation}
+    \caption{Same lattice and particle configuration as before but with optimisations, run-time performance improves for the presented GPU systems, typically by a factor $\sim 2.0$.}
+    \label{fig:optimised_performance}
+\end{figure}
+Figure~\ref{fig:optimised_performance}) presents exemplarily the improvements for the AMD Radeon VII and NVIDIA Titan-V cards, with typical improvement factors of $\sim 2\times$\cite{data-2021}. 
+
+\section{Conclusions \& Outlook}
+Writing a tracking library with good parallel performance across a large range $N_{part}$ and across a diverse set of hardware is feasible. The presented optimised implementation provides satisfactory performance:
+sorted by increasing speedup, simulations profit from parallelisation on consumer-grade GPUs, multi-core high-end CPUs and finally high-end GPUs. 
+Further investigations about the contributing factors to the scaling behaviour are needed. Of particular interest are lattices containing beam elements which contribute significantly to the register pressure. Scenarios where the extended interfaces for sharing data are not required could benefit from moving the lattice or parts of the particle data to constant or shared device memory, warranting further investigations into this direction. The presented optimisations will be part of the upcoming version 1.0 of SixTrackLib.
+
+% rocknroll!!! :)
+
+%
+% only for "biblatex"
+%
+\ifboolexpr{bool{jacowbiblatex}}%
+	{\printbibliography}%
+	{%
+	% "biblatex" is not used, go the "manual" way
+	
+	\begin{thebibliography}{99}   % Use for  10-99  references
+% 	\begin{thebibliography}{9} % Use for 1-9 references
+	
+	\bibitem{sixtracklib-repo-2021}
+		SixTrackLib source code repository, \newline
+		\url{https://github.com/SixTrack/sixtracklib}
+
+    \bibitem{demaria2019}
+        R.~De Maria et al ``SixTrack V and runtime environment'' in 
+        \textit{International Journal of Modern Physics A}, Vol. 34, No. 36, 1942035 (2019), \newline
+        \url{https://doi.org/10.1142/S0217751X19420351}
+
+	\bibitem{sixtrack-repo-2021}
+		SixTrack source code repository, \newline
+		\url{https://github.com/SixTrack/sixtrack}
+		
+    \bibitem{stone-opencl-2010}
+        J.~E.~Stone, et al ``{OpenCL}: {{A Parallel Programming Standard}} for {{Heterogeneous Computing Systems}}'' in \textit{Computing in Science \& Engineering}, Vol. 12, No. 3, p. 66--72 (2010),  \newline
+        \url{https://doi.org/10.1109/mcse.2010.69}
+        
+    \bibitem{nickolls-cuda-2008}
+        J.~Nickolls, et al ``Scalable {{Parallel Programming}} with {{CUDA}}'' in 
+        \textit{Queue}, Vol. 6, No. 2, p. 40 -- 53 (2008),  \newline
+        \url{https://doi.org/10.1145/1365490.1365500}
+        
+    \bibitem{cobjects-repo-2021}
+        CObjects source code repository,  \newline
+        \url{https://github.com/SixTrack/cobjects}
+        
+    \bibitem{kparaschou-2020}
+        K.~Paraschou and G.~Iadarola,
+        ``Incoherent electron cloud effects in the Large Hadron Collider'',
+        \emph{CERN Yellow Rep. Conf. Proc.}, vol. 9, pp. 249--255, Dec. 2020, \newline
+        \url{https://doi.org/10.23732/CYRCP-2020-009.249}
+        
+    \bibitem{aoeftiger-2021}
+        A.~Oeftiger et al., Simulation study of the space charge limit for the FAIR Heavy-ion Synchrotron SIS100, to be published (2021)
+        
+    \bibitem{pyheadtail-repo-2021}
+        PyHEADTAIL source code repository,\newline
+        \url{https://github.com/PyCOMPLETE/PyHEADTAIL}
+        
+    \bibitem{data-2021}
+        ipac21\_sixtracklib: Complementary repository containing raw timing data and
+        information about the presented hardware systems.\newline 
+        \url{https://github.com/martinschwinzerl/ipac21_sixtracklib}
+	\end{thebibliography}
+} % end \ifboolexpr
+%
+% for use as JACoW template the inclusion of the ANNEX parts have been commented out
+% to generate the complete documentation please remove the "%" of the next two commands
+% 
+%%%\newpage
+
+%%%\include{annexes-A4}
+
+\end{document}
