@@ -69,7 +69,7 @@ Consider a lattice with $N_{elem}$ beam elements i.e., $E_i \equiv \left(\mathbf
     \label{equ:impl_tracking_with_maps}
     p\left(i\right) \leftarrow E_i\left( p\left( i - 1 \right) \right) \quad i \in \left[0, N_{elem}\right)
 \end{equation}
-Applying (\ref{equ:impl_tracking_with_maps}) for all $i$ and repeating the operation until $p$ has traversed until turn $N$ in a circular accelerator is an inherently sequential operation with only very few opportunities for parallelisation\footnote{I.e.,  OpenMP-style loop parallelisation, or \textit{single-instruction, multiple-data} (SIMD) vectorisation, which apply only to specific classes of maps}. While performing the simulation for a single $p$ is useful, most real-world scenarios require to simulate an \textit{ensemble} of $N_{p}$ particles i.e., $p_j \equiv \left(\mathbf{Q}\right)\left[j\right]\;,\;j\in\left[0,N_{p}\right)$.
+Applying (\ref{equ:impl_tracking_with_maps}) for all $i$ and repeating the operation until $p$ has traversed until turn $N$ in a circular accelerator is an inherently sequential operation with only very few opportunities for parallelisation\footnote{I.e.,  OpenMP-style loop parallelisation, or \textit{single-instruction, multiple-data} (SIMD) vectorisation, which both apply only to specific maps}. While performing the simulation for a single $p$ is useful, most real-world scenarios require to simulate an \textit{ensemble} of $N_{p}$ particles i.e., $p_j \equiv \left(\mathbf{Q}\right)\left[j\right]\;,\;j\in\left[0,N_{p}\right)$.
 % -------------------------------------------------
 \begin{algorithm}[!hbt]
 \begin{algorithmic}[1]
@@ -127,7 +127,7 @@ Using cobject buffers does not preclude direct manipulation of pointers on the d
     \label{fig:be_external_data}
 \end{figure}
 % ---------------------------------------------------------------------
-Replicating these tables at each required lattice position would not be possible due to the cummulative global memory requirements. However, by allowing tables to be shared across all elements using the same data (cf. Fig.~\ref{fig:be_external_data}), intensive simulations of this type have successfully been performed using SixTrackLib.
+Replicating these tables at each required lattice position would not be possible due to the cumulative global memory requirements. However, by allowing tables to be shared across all elements using the same data (cf. Fig.~\ref{fig:be_external_data}), intensive simulations of this type have successfully been performed using SixTrackLib.
 Similarly, SixTrackLib implements a \textit{frozen space charge} model which i.a.\ features an interpolated line-charge density profile, allowing the discretised line-profile data to be shared among the beam elements~\cite{aoeftiger-2021}. It uses the same interfaces as the previous example but the main aim here is to simplify updates to the charge-density profile over the course of the simulation.
 
 Finally, by implementing tracking modes that traverse only a subset of a turn in addition to Alg.~\ref{alg:track_until_turn} and exposing the particle data stored in device memory, SixTrackLib allows a seamless integration and hand-off of tracking duties with other algorithms and libraries. 
@@ -169,7 +169,7 @@ Applying optimisations a) to c) to the same configuration, numerical experiments
 Figure~\ref{fig:optimised_performance} presents exemplarily the improvements for the AMD Radeon VII and NVIDIA Titan-V cards, with typical improvement factors around $2\times$ (cf. \cite{data-2021}).
 
 \section{Conclusions \& Outlook}
-Writing a tracking library with good parallel performance across a large range of $N_{p}$ for a diverse set of hardware is feasible. The presented optimised implementation provides satisfactory performance:
+Writing a tracking library with good parallel performance across a large range of simulated particles $N_{p}$ and for a diverse set of hardware is feasible. The presented optimised implementation provides satisfactory performance:
 sorted by increasing speedup, simulations profit from parallelisation on consumer-grade GPUs, multi-core high-end CPUs and finally high-end GPUs. 
 Further investigations about the contributing factors to the scaling behaviour are needed. Of particular interest are lattices containing beam elements contributing significantly to the register pressure. Scenarios where the extended interfaces for sharing data are not required could benefit from moving the lattice or parts of the particle data to constant or shared device memory, warranting further investigations. The presented optimisations will be part of the upcoming version 1.0 of SixTrackLib.
 
@@ -219,7 +219,7 @@ Further investigations about the contributing factors to the scaling behaviour a
         \url{https://doi.org/10.23732/CYRCP-2020-009.249}
         
     \bibitem{aoeftiger-2021}
-        A.~Oeftiger et al., Simulation study of the space charge limit for the FAIR Heavy-ion Synchrotron SIS100, to be published (2021)
+        A.~Oeftiger, {\it et al.}, Simulation study of the space charge limit for the FAIR Heavy-ion Synchrotron SIS100, to be published (2021)
         
     \bibitem{pyheadtail-repo-2021}
         PyHEADTAIL source code repository,\newline
