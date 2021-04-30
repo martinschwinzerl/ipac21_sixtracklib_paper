@@ -128,7 +128,7 @@ Using cobject buffers does not preclude direct manipulation of pointers on the d
 \end{figure}
 % ---------------------------------------------------------------------
 Replicating these tables at each required lattice position would not be possible due to the cumulative global memory requirements. However, by allowing tables to be shared across all elements using the same data (cf. Fig.~\ref{fig:be_external_data}), intensive simulations of this type have successfully been performed using SixTrackLib.
-Similarly, SixTrackLib implements a \textit{frozen space charge} model which i.a.\ features an interpolated line-charge density profile, allowing the discretised line-profile data to be shared among the beam elements~\cite{aoeftiger-2021}. It uses the same interfaces as the previous example but the main aim here is to simplify updates to the charge-density profile over the course of the simulation.
+Similarly, SixTrackLib implements a \textit{frozen space charge} model which, among others, features an interpolated line-charge density profile, allowing the discretised line-profile data to be shared among the beam elements~\cite{aoeftiger-2021}. It uses the same interfaces as the previous example but the main aim here is to simplify updates to the charge-density profile over the course of the simulation.
 
 Finally, by implementing tracking modes that traverse only a subset of a turn in addition to Alg.~\ref{alg:track_until_turn} and exposing the particle data stored in device memory, SixTrackLib allows a seamless integration and hand-off of tracking duties with other algorithms and libraries. 
 % ---------------------------------------------------------------------
@@ -148,10 +148,10 @@ These extensions and additional interfaces increase the versatility and usefulne
 \begin{figure*}[h!t]
     \centering
     \includegraphics*[width=0.9\textwidth]{fig_performance_baseline}
-    \caption{Normalised tracking time (i.e., elapsed wall-time per particle and turn, lower numbers are better) as a function of $N_{p}$ on a selection of hardware targets. The lattice describes the CERN LHC with imperfections but without beam-beam interaction. $(P_0\cdot c) = 6.5$ TeV, starting conditions have been chosen such that no particles are lost.}
+    \caption{Normalised tracking time (i.e., elapsed wall-time per particle and turn, lower numbers are better) as a function of $N_{p}$ on a selection of hardware targets for the CERN LHC lattice. $(P_0\cdot c) = 6.5$ TeV, starting conditions have been chosen such that no particles are lost.}
     \label{fig:baseline_performance}
 \end{figure*}
-The implementation described in the previous section corresponds to version $0.5$ of SixTrackLib~\cite{sixtracklib-repo-2021}. Using a representative lattice (CERN's LHC with imperfections but without beam-beam or space charge effects). Figure~\ref{fig:baseline_performance} shows the normalised tracking time $t_{track} = t_{elapsed}/(N_{p}\cdot N)$ as a function of $N_{p}$,  for a representative set of target systems. 
+The implementation described in the previous section corresponds to version $0.5$ of SixTrackLib~\cite{sixtracklib-repo-2021}. Using an example lattice from CERN's LHC with imperfections but without beam-beam or space charge effects, Figure~\ref{fig:baseline_performance} shows the normalised tracking time $t_{track} = t_{elapsed}/(N_{p}\cdot N)$ as a function of $N_{p}$,  for a representative set of target systems. 
 
 With increasing $N_{p}$, parallelisation overheads and latencies should eventually be amortised, resulting in approx. constant $t_{track}$. All presented systems show this expected behaviour. Even with grid dimensions adapted to preferable warp/wave-front sizes, run-time performance can vary considerably for similar $N_{p}$. Therefore, the median $t_{track}$ over the range most interesting for GPUs i.e., $N_{p} = 10^4$ to $10^6$ (cf. detail in right half of Fig.~\ref{fig:baseline_performance}) is used to calculate the speed-ups. For the presented (quite representative) scenario, even lower-end consumer GPUs with poor double precision performance ratios (i.e., 1:32 for the GTX1050 Ti) yield median speedups of $>\mathcal{O}(10)$ compared to sequential tracking on the fastest tested CPU. Using more powerful GPUs with a 1:2 double precision performance ratio, speedups of $\geq \mathcal{O}(100)$ are easily reachable. Using multi-threaded OpenCL parallelisation on CPUs typically yields performance in between consumer- and HPC-grade GPUs. For these systems, optimal scaling (i.e. constant $t_{track}$) sets in at lower $N_{p} = 10^1 \ldots 10^3$, depending on the parallel run-time and CPU). The sequential, single-core CPU back-end of SixTrackLib also performs approx. $>\mathcal{O}(10)$ better than recent versions of MAD-X ($< 10^{-3} s$ vs. $\simeq 0.01 s$ for the LHC \cite{person-madx-2021})\footnote{Comparisons are only meaningful up to orders of magnitude due to the significantly wider range of capabilities and the large number of parameters influencing the performance of MAD-X.}, further demonstrating the competitiveness of SixTrackLib.
 \subsection{Optimisation Strategy}
@@ -166,7 +166,7 @@ Applying optimisations a) to c) to the same configuration, numerical experiments
     \caption{Same lattice and particle configuration as before but with optimisations, run-time performance improves for the presented GPU systems, typically by about a factor of $2$.}
     \label{fig:optimised_performance}
 \end{figure}
-Figure~\ref{fig:optimised_performance} presents exemplarily the improvements for the AMD Radeon VII and NVIDIA Titan-V cards, with typical improvement factors around $2\times$ (cf. \cite{data-2021}).
+Figure~\ref{fig:optimised_performance} shows the improvements for the AMD Radeon VII and NVIDIA Titan-V cards, with typical improvement factors around $2\times$ (cf. \cite{data-2021}).
 
 \section{Conclusions \& Outlook}
 Writing a tracking library with good parallel performance across a large range of simulated particles $N_{p}$ and for a diverse set of hardware is feasible. The presented optimised implementation provides satisfactory performance:
