@@ -55,7 +55,7 @@ SixTrackLib\cite{sixtracklib-repo-2021} is a clean-room re-implementation of the
 % ------------------------------------------------------------
 \begin{figure}[!htb]
    \centering
-   \includegraphics*[width=.9\columnwidth]{fig_coordinates}
+   \includegraphics*[width=.9\columnwidth]{THPAB190_f1}
    \caption{$6D$ representation of a particle $p$ in a circular accelerator (local bending radius $\rho(s)$). The coordinate system $\hat{x}(s)-\hat{y}(s)-\hat{z}(s)$ co-moves with the reference particle.}
    \label{fig:coordinates}
 \end{figure}
@@ -110,7 +110,7 @@ In addition to the principal six degrees of freedom and the state variables to e
 %--------------------------------------
 \begin{figure}[!hbt]
     \centering
-    \includegraphics*[width=.95\columnwidth]{fig_cobjects}
+    \includegraphics*[width=.95\columnwidth]{THPAB190_f2}
     \caption{a) Struct-of-arrays storage model for sets of particles. b) Schematic principle for storing structured objects with member pointers in a cobjects buffer.}
     \label{fig:cobjects}
 \end{figure}
@@ -122,7 +122,7 @@ Using cobject buffers does not preclude direct manipulation of pointers on the d
 % ---------------------------------------------------------------------
 \begin{figure}[!hbt]
     \centering
-    \includegraphics*[width=.9\columnwidth]{fig_be_external_data}
+    \includegraphics*[width=.9\columnwidth]{THPAB190_f3}
     \caption{Multiple items in a cobjects buffer sharing data.}
     \label{fig:be_external_data}
 \end{figure}
@@ -147,7 +147,7 @@ These extensions and additional interfaces increase the versatility and usefulne
 \subsection{Baseline Performance}
 \begin{figure*}[h!t]
     \centering
-    \includegraphics*[width=0.9\textwidth]{fig_performance_baseline}
+    \includegraphics*[width=0.9\textwidth]{THPAB190_f4}
     \caption{Normalised tracking time (i.e., elapsed wall-time per particle and turn, lower numbers are better) as a function of $N_{p}$ on a selection of hardware targets for the CERN LHC lattice. $(P_0\cdot c) = 6.5$ TeV, starting conditions have been chosen such that no particles are lost.}
     \label{fig:baseline_performance}
 \end{figure*}
@@ -162,7 +162,7 @@ a) create a private copy of $p_j$ for each thread (i.e., change line~\ref{alg1:l
 Applying optimisations a) to c) to the same configuration, numerical experiments conducted at CERN and GSI reveal performance gains across all studied GPU systems.
 \begin{figure}[h!bt]
     \centering 
-    \includegraphics*[width=\columnwidth]{fig_performance_optimisation}
+    \includegraphics*[width=\columnwidth]{THPAB190_f5}
     \caption{Same lattice and particle configuration as before but with optimisations, run-time performance improves for the presented GPU systems, typically by about a factor of $2$.}
     \label{fig:optimised_performance}
 \end{figure}
